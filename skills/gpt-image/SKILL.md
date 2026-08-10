@@ -1,8 +1,8 @@
 ---
 name: gpt-image
 description: "Use this skill whenever a user asks to generate, create, draw, render, or edit images with GPT Image 2 / gpt-image-2, text-to-image, reference-image editing, inpainting, posters, typography, Chinese text, UI mockups, diagrams, or gallery prompts. Analyze the user's prompt, search the bundled Reference Gallery/craft files for matching design patterns, confer on direction when useful, then call the packaged `gpt-image` CLI or bundled `scripts/generate.py`. Do not write new image-generation code unless explicitly asked to modify this repo."
-compatibility: "Requires Python 3.11+ and either `gpt-image`, `uv`, or `uvx`. CLI/API calls read `OPENAI_API_KEY` and may incur OpenAI API charges."
-metadata: {"openclaw":{"requires":{"anyBins":["gpt-image","uv","uvx"]},"primaryEnv":"OPENAI_API_KEY","homepage":"https://github.com/wuyoscar/gpt_image_2_skill"}}
+compatibility: "Requires Python 3.11+ and either `gpt-image`, `uv`, or `uvx`. CLI/API calls read `GPT_IMAGE_API_KEY` / `GPT_IMAGE_BASE_URL` (fallback `OPENAI_API_KEY` / `OPENAI_BASE_URL`) and may incur API charges."
+metadata: {"openclaw":{"requires":{"anyBins":["gpt-image","uv","uvx"]},"primaryEnv":"GPT_IMAGE_API_KEY","homepage":"https://github.com/miracloon/GPT-Image2-Skill"}}
 ---
 
 # gpt-image
@@ -34,17 +34,18 @@ gpt-image -p "PROMPT" [-f OUT] [-i REF...] [-m MASK] [options]
 uv run "$SKILL_DIR/scripts/generate.py" -p "PROMPT" [-f OUT] [-i REF...] [-m MASK] [options]
 
 # Direct transient CLI when the user requested setup/one-off CLI execution
-uvx --from git+https://github.com/wuyoscar/gpt_image_2_skill gpt-image -p "PROMPT" [options]
+uvx --from git+https://github.com/miracloon/GPT-Image2-Skill gpt-image -p "PROMPT" [options]
 ```
 
 `scripts/generate.py` is a launcher: repo-local `src/gpt_image_cli` → installed `gpt-image` → PATH `gpt-image` → transient `uvx`/`uv` fallback.
 
 ## Key and cost rules
 
-- CLI reads `OPENAI_API_KEY` from process env, then `.env`, then `~/.env` without overriding existing env; successful API calls may bill the user’s OpenAI account.
+- CLI reads `GPT_IMAGE_API_KEY` / `GPT_IMAGE_BASE_URL` (with `OPENAI_API_KEY` / `OPENAI_BASE_URL` as fallbacks) from process env, then `.env`, then `~/.env` without overriding existing env; successful API calls may bill the account of the configured channel.
+- Model resolution: explicit `--model` flag wins, then `$GPT_IMAGE_MODEL`, then the default `gpt-image-2`. This allows non-OpenAI OpenAI-compatible channels (set `GPT_IMAGE_API_KEY` + `GPT_IMAGE_BASE_URL` + `GPT_IMAGE_MODEL`) without touching global `OPENAI_*` vars.
 - If host/runtime has native platform-managed image generation and the user wants that path, use the host tool instead of this CLI.
-- If `OPENAI_API_KEY` is unset, report missing key or use host-native generation when requested; do not write secrets.
-- If user wants to avoid local-key use, respect `unset OPENAI_API_KEY`; if a key exists in `.env`/`~/.env`, tell them to remove/rename it for the session rather than working around it.
+- If neither `GPT_IMAGE_API_KEY` nor `OPENAI_API_KEY` is set, report missing key or use host-native generation when requested; do not write secrets.
+- If user wants to avoid local-key use, respect `unset GPT_IMAGE_API_KEY`; if a key exists in `.env`/`~/.env`, tell them to remove/rename it for the session rather than working around it.
 - Never print secret values.
 
 ## Flags

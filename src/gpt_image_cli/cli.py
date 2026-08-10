@@ -14,8 +14,10 @@ Mirrors the two official endpoints from the OpenAI cookbook using the official
     client.images.generate(...)   — text → image          (no  -i)
     client.images.edit(...)       — text + image(s) → image (with -i; mask via -m)
 
-Every documented parameter is exposed as a flag. Reads OPENAI_API_KEY from
-process env, then .env, then ~/.env without overriding existing env. Writes the
+Every documented parameter is exposed as a flag. Reads GPT_IMAGE_API_KEY /
+GPT_IMAGE_BASE_URL / GPT_IMAGE_MODEL (falling back to OPENAI_API_KEY /
+OPENAI_BASE_URL and the default model) from process env, then .env, then
+~/.env without overriding existing env. Writes the
 returned PNG/JPEG/WebP bytes to disk and prints the output path(s) on stdout.
 
 Exit codes: 0 success, 1 API error, 2 bad args.
@@ -59,13 +61,22 @@ from openai import APIError, OpenAI
 
 
 def _load_env_chain() -> None:
-    """Resolve OPENAI_API_KEY without overriding runtime-provided env.
+    """Resolve credentials without overriding runtime-provided env.
 
     Order: process env → ./.env → ~/.env. Existing process env wins so
     hosted agents or explicit shell exports are not replaced by local files.
     """
     load_dotenv(Path.cwd() / ".env", override=False)
     load_dotenv(Path.home() / ".env", override=False)
+
+
+def _resolve_env(*names: str) -> str | None:
+    """Return the first non-empty env var among names (or None)."""
+    for n in names:
+        v = os.environ.get(n)
+        if v:
+            return v
+    return None
 
 
 SIZE_SHORTCUTS: dict[str, str] = {
@@ -127,7 +138,10 @@ def parse_args() -> argparse.Namespace:
         help="Alpha-channel PNG mask (opaque = preserved, transparent = regenerated). "
              "Edits endpoint only; requires -i.",
     )
-    p.add_argument("--model", default=DEFAULT_MODEL, help=f"Model ID (default {DEFAULT_MODEL}).")
+    p.add_argument(
+        "--model", default=None,
+        help=f"Model ID. Explicit flag wins, then $GPT_IMAGE_MODEL, then default {DEFAULT_MODEL}.",
+    )
     p.add_argument(
         "--size", default=DEFAULT_SIZE,
         help="Image size. Accepts literals (1024x1024, 1536x1024, 2048x2048, 3840x2160, "
@@ -258,9 +272,11 @@ def main() -> int:
     args = parse_args()
 
     _load_env_chain()
-    if not os.environ.get("OPENAI_API_KEY"):
+    api_key = _resolve_env("GPT_IMAGE_API_KEY", "OPENAI_API_KEY")
+    if not api_key:
         print(
-            "error: OPENAI_API_KEY not set. Add it to env / .env / ~/.env, or use your host agent's native image tool.",
+            "error: GPT_IMAGE_API_KEY (or OPENAI_API_KEY) not set. Add it to env / .env / ~/.env, "
+            "or use your host agent's native image tool.",
             file=sys.stderr,
         )
         return 2
@@ -272,7 +288,10 @@ def main() -> int:
     ext = args.output_format or "png"
     out_path = Path(args.file).expanduser().resolve() if args.file else default_output_path(args.prompt, ext)
 
-    client = OpenAI()  # auto-reads OPENAI_API_KEY
+    base_url = _resolve_env("GPT_IMAGE_BASE_URL", "OPENAI_BASE_URL")
+    if args.model is None:
+        args.model = os.environ.get("GPT_IMAGE_MODEL") or DEFAULT_MODEL
+    client = OpenAI(api_key=api_key, base_url=base_url)
 
     try:
         result = call_edit(client, args) if args.image else call_generate(client, args)

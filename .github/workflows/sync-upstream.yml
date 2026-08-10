@@ -1,0 +1,57 @@
+name: Sync upstream
+
+# 每天自动把上游 wuyoscar/GPT-Image2-Skill 的 main 合并进本 fork。
+# 冲突时保留现场到 sync-conflict 分支并失败（GitHub 会发失败通知），人工处理。
+#
+# 注意：fork 仓库的 schedule 触发默认是禁用的，需要先在
+# Settings → Actions → General 里开启 Actions，然后手动跑一次
+# workflow_dispatch 激活（之后每天自动执行）。
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 每天 UTC 03:00（北京 11:00）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream
+        run: |
+          git remote add upstream https://github.com/wuyoscar/GPT-Image2-Skill.git
+
+      - name: Fetch upstream
+        run: git fetch upstream main
+
+      - name: Merge upstream/main into main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git merge upstream/main --no-edit; then
+            echo "conflict=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preserve conflict state and fail
+        if: steps.merge.outputs.conflict == '1'
+        run: |
+          git checkout -b sync-conflict || true
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "sync: conflict with upstream/main (auto)" || true
+          git push origin sync-conflict || true
+          echo "::error::Merge conflict with upstream/main; conflict state pushed to sync-conflict"
+          exit 1
+
+      - name: Push merged main
+        if: steps.merge.outputs.conflict != '1'
+        run: git push origin main
