@@ -14,10 +14,8 @@ Mirrors the two official endpoints from the OpenAI cookbook using the official
     client.images.generate(...)   — text → image          (no  -i)
     client.images.edit(...)       — text + image(s) → image (with -i; mask via -m)
 
-Common generation and editing parameters are exposed as flags. Reads
-GPT_IMAGE_API_KEY / GPT_IMAGE_BASE_URL / GPT_IMAGE_MODEL (falling back to
-OPENAI_API_KEY / OPENAI_BASE_URL and the default model) from process env, then
-.env, then ~/.env without overriding existing env. Writes the
+Common generation and editing parameters are exposed as flags. Reads OPENAI_API_KEY from
+process env, then .env, then ~/.env without overriding existing env. Writes the
 returned PNG/JPEG/WebP bytes to disk and prints the output path(s) on stdout.
 
 Exit codes: 0 success, 1 API error, 2 bad args.
@@ -61,22 +59,13 @@ from openai import APIError, OpenAI
 
 
 def _load_env_chain() -> None:
-    """Resolve credentials without overriding runtime-provided env.
+    """Resolve OPENAI_API_KEY without overriding runtime-provided env.
 
     Order: process env → ./.env → ~/.env. Existing process env wins so
     hosted agents or explicit shell exports are not replaced by local files.
     """
     load_dotenv(Path.cwd() / ".env", override=False)
     load_dotenv(Path.home() / ".env", override=False)
-
-
-def _resolve_env(*names: str) -> str | None:
-    """Return the first non-empty env var among names (or None)."""
-    for n in names:
-        v = os.environ.get(n)
-        if v:
-            return v
-    return None
 
 
 SIZE_SHORTCUTS: dict[str, str] = {
@@ -138,13 +127,7 @@ def parse_args() -> argparse.Namespace:
         help="Alpha-channel PNG mask (opaque = preserved, transparent = regenerated). "
              "Edits endpoint only; requires -i.",
     )
-    p.add_argument(
-        "--model", default=os.environ.get("GPT_IMAGE_MODEL") or DEFAULT_MODEL,
-        help=(
-            "Model ID: gpt-image-2.5-flare, gpt-image-2.5-sunburst, or "
-            f"{DEFAULT_MODEL}. Explicit flag wins, then $GPT_IMAGE_MODEL, then the default."
-        ),
-    )
+    p.add_argument("--model", default=DEFAULT_MODEL, help=f"Model ID: gpt-image-2.5-flare, gpt-image-2.5-sunburst, or {DEFAULT_MODEL} (compatibility default).")
     p.add_argument(
         "--size", default=DEFAULT_SIZE,
         help="Image size. Accepts literals (1024x1024, 1536x1024, 2048x2048, 3840x2160, "
@@ -294,13 +277,12 @@ def write_outputs(data: list[Any], out_path: Path, n: int) -> list[Path]:
 
 
 def main() -> int:
-    _load_env_chain()
     args = parse_args()
-    api_key = _resolve_env("GPT_IMAGE_API_KEY", "OPENAI_API_KEY")
-    if not api_key:
+
+    _load_env_chain()
+    if not os.environ.get("OPENAI_API_KEY"):
         print(
-            "error: GPT_IMAGE_API_KEY (or OPENAI_API_KEY) not set. Add it to env / .env / ~/.env, "
-            "or use your host agent's native image tool.",
+            "error: OPENAI_API_KEY not set. Add it to env / .env / ~/.env, or use your host agent's native image tool.",
             file=sys.stderr,
         )
         return 2
@@ -308,12 +290,7 @@ def main() -> int:
     ext = args.output_format or "png"
     out_path = Path(args.file).expanduser().resolve() if args.file else default_output_path(args.prompt, ext)
 
-    base_url = _resolve_env("GPT_IMAGE_BASE_URL", "OPENAI_BASE_URL")
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        max_retries=0,  # No hidden retries of potentially billable generation requests.
-    )
+    client = OpenAI(max_retries=0)  # No hidden retries of potentially billable generation requests.
 
     try:
         result = call_edit(client, args) if args.image else call_generate(client, args)

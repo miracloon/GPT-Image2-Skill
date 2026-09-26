@@ -53,10 +53,7 @@ class CliTests(unittest.TestCase):
         return httpx.Response(self.response_status, json=body, request=request)
 
     def test_default_preserved_and_models_not_rewritten(self):
-        with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(parse().model, 'gpt-image-2')
-        with patch.dict(os.environ, {'GPT_IMAGE_MODEL': MODELS[0]}, clear=True):
-            self.assertEqual(parse().model, MODELS[0])
+        self.assertEqual(parse().model, 'gpt-image-2')
         for model in (*MODELS, *(m + '-2026-09-08' for m in MODELS), 'gpt-image-2'):
             with self.subTest(model=model):
                 self.assertEqual(parse('--model', model).model, model)
@@ -159,17 +156,10 @@ class CliTests(unittest.TestCase):
         for flags, endpoint in [([], 'generations'), (['-i', str(self.image)], 'edits')]:
             path = self.folder / (endpoint + '.png')
             with patch.object(sys, 'argv', ['gpt-image', '-p', 'Offline test', '--model', MODELS[0], '-f', str(path), *flags]), \
-                 patch.object(cli, '_load_env_chain'), patch.dict(os.environ, { \
-                     'GPT_IMAGE_API_KEY': 'offline-test', \
-                     'GPT_IMAGE_BASE_URL': 'https://example.invalid/v1', \
-                 }, clear=True), \
+                 patch.object(cli, '_load_env_chain'), patch.dict(os.environ, {'OPENAI_API_KEY': 'offline-test'}), \
                  patch.object(cli, 'OpenAI', return_value=self.client) as constructor, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(cli.main(), 0)
-                constructor.assert_called_once_with(
-                    api_key='offline-test',
-                    base_url='https://example.invalid/v1',
-                    max_retries=0,
-                )
+                constructor.assert_called_once_with(max_retries=0)
             self.assertEqual(path.read_bytes(), PNG)
             self.assertEqual(self.requests[-1].url.path, '/v1/images/' + endpoint)
 

@@ -57,21 +57,6 @@ class CredentialTests(unittest.TestCase):
         self.assert_selected_key(None)
         self.assertNotIn('OPENAI_API_KEY', os.environ)
 
-    def test_gpt_image_namespace_precedes_openai_fallback(self):
-        os.environ['GPT_IMAGE_API_KEY'] = 'fake-gpt-image-key'
-        os.environ['OPENAI_API_KEY'] = 'fake-openai-key'
-        os.environ['GPT_IMAGE_BASE_URL'] = 'https://gpt-image.example/v1'
-        os.environ['OPENAI_BASE_URL'] = 'https://openai.example/v1'
-
-        self.assertEqual(
-            cli._resolve_env('GPT_IMAGE_API_KEY', 'OPENAI_API_KEY'),
-            'fake-gpt-image-key',
-        )
-        self.assertEqual(
-            cli._resolve_env('GPT_IMAGE_BASE_URL', 'OPENAI_BASE_URL'),
-            'https://gpt-image.example/v1',
-        )
-
     def test_existing_empty_key_does_not_fall_back(self):
         os.environ['OPENAI_API_KEY'] = ''
         self.write_key(self.cwd, 'fake-cwd-key')
