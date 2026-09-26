@@ -48,7 +48,10 @@ jobs:
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -m "sync: conflict with upstream/main (auto)" || true
-          git push origin sync-conflict || true
+          # Replace only the bot-owned conflict snapshot we fetched at checkout.
+          # --force-with-lease keeps manual remote edits safe while allowing the
+          # daily run to refresh the branch instead of failing non-fast-forward.
+          git push --force-with-lease origin HEAD:sync-conflict
           echo "::error::Merge conflict with upstream/main; conflict state pushed to sync-conflict"
           exit 1
 
