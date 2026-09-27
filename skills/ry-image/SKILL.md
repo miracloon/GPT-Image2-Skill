@@ -1,11 +1,18 @@
 ---
 name: ry-image
-description: "Use when the user wants an image created, edited, redesigned, or art-directed (生图、改图、海报、配图、概念图). Shape the idea with the upstream visual library, then generate only through scripts/generate.sh. The configured model is an opaque route alias; do not choose a provider or use host-native image tools."
+description: "Use when the user wants an image created, edited, redesigned, art-directed, or reverse-prompted from a reference image (生图、改图、海报、配图、概念图、反推提示词). Generate and edit only through scripts/generate.sh. Reverse prompts only through prompt-from-image/. The configured model is an opaque route alias; do not choose a provider or use host-native image tools."
 ---
 
 # ry-image
 
-Thin image policy for any local agent. Upstream `gpt-image` remains the vendor reference library and CLI. This skill owns intent, prompt craft, and the only execution path.
+Thin image policy for any local agent. This is the only agent entry for image work. Upstream `gpt-image` and `get-prompt-from-image` stay vendor-owned libraries. This skill owns routing, intent, and the generation path.
+
+## Route
+
+- Create, edit, redesign, or art-direct → Generate / Edit below.
+- Recreate, imitate, reverse-engineer, or extract a prompt from a user-provided image → Reverse Prompt below.
+- Do not use either path for OCR or an ordinary image description.
+- Do not load `gpt-image` or `get-prompt-from-image` as agent skills. Read them only through the links in this directory.
 
 ## Routing boundary
 
@@ -28,6 +35,12 @@ Creative sources, via `references/` (the upstream gallery):
 Do not read provider-specific notes by default, including `references/models.md` and `references/openai-image-*`. Open them only when the user explicitly asks to target GPT Image or a named model.
 
 Preserve the user's exact text, subject, and edit invariants. Do not silently change the brief.
+
+## Reverse Prompt
+
+Follow `prompt-from-image/SKILL.md` and only the references it selects. That directory is the live upstream skill, not a copy. Do not duplicate or rewrite it.
+
+Reverse prompting returns text. Do not call `scripts/generate.sh`, and do not require `RY_IMAGE_*`, unless the user also asks to generate from the result.
 
 ## Execution
 
