@@ -5,7 +5,7 @@ description: "Use when the user wants an image created, edited, redesigned, art-
 
 # ry-image
 
-Thin image policy for any local agent. This is the only agent entry for image work. Upstream `gpt-image` and `get-prompt-from-image` stay vendor-owned libraries. This skill owns routing, intent, and the generation path.
+Thin image policy for any local agent. Upstream `gpt-image` and `get-prompt-from-image` stay vendor-owned libraries. This skill owns routing, intent, and the generation path.
 
 ## Route
 
