@@ -34,16 +34,16 @@ Preserve the user's exact text, subject, and edit invariants. Do not silently ch
 Invoke only:
 
 ```bash
-scripts/generate.sh -p "PROMPT" --size 1024x1024 --quality high -f output.png
+scripts/generate.sh -p "PROMPT" --size 1024x1024 -f output.png
 ```
 
 Use the skill directory's `scripts/generate.sh`. Do not call `gpt-image`, `skills/gpt-image/scripts/generate.py`, a host `image_generate` tool, or any other image backend.
 
-The wrapper maps `RY_IMAGE_*` onto the upstream CLI for that child process only. It always passes `--model`. Do not pass `--model` yourself unless the user explicitly overrides the route.
+The wrapper maps `RY_IMAGE_*` onto the upstream CLI for that child process only. It always passes `--model`. Do not pass `--model` yourself unless the user explicitly overrides the route. Do not change the wrapper to strip or remap fields.
 
 Portable flags only: `-p`, `-f`, `-i`, `-m`, `--size`, `--quality`, `-n`, `--format`.
 
-Defaults: one image, `--quality high`, and a size the user actually needs (`1024x1024` when unspecified). `xhigh` and `max` are outside this path because the upstream CLI rejects them unless the model id is a GPT Image 2.5 name. Do not switch models to unlock them.
+Defaults: one image, and a size the user actually needs (`1024x1024` when unspecified). Do not pass `--quality`. Treat “higher quality”, drafts, and finals as visual intent in the prompt: detail, composition, type, material, consistency, and references. Pass `--quality` only when the user explicitly asks for that parameter. Leave the upstream CLI default alone; the gateway decides whether to keep, rewrite, or drop it. Do not add `RY_IMAGE_QUALITY`, `--quality auto`, or any other quality compatibility layer.
 
 Reference edits use repeated `-i`. Inpainting adds `-m` and requires `-i`.
 
@@ -51,4 +51,4 @@ If `RY_IMAGE_API_KEY` or `RY_IMAGE_BASE_URL` is missing, stop and say so. Do not
 
 ## Report
 
-Return the output path, the size and quality used, and at most one refinement suggestion. On API failure, report the failure and stop. Do not retry with a different model or a rewritten prompt.
+Return the output path, the size used, and at most one refinement suggestion. On API failure, report the failure and stop. Do not retry with a different model or a rewritten prompt.
