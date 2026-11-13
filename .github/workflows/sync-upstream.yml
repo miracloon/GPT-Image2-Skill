@@ -1,19 +1,26 @@
 name: Sync upstream
 
-# 每天自动把上游 wuyoscar/GPT-Image2-Skill 的 main 合并进本 fork。
-# 冲突时保留现场到 sync-conflict 分支并失败（GitHub 会发失败通知），人工处理。
+# Fork owns .github/workflows/. Import other upstream changes without importing
+# upstream workflow commits, which GITHUB_TOKEN cannot push without workflow access.
+# A checkpoint records the last imported upstream commit for the next 3-way patch.
 #
-# 注意：fork 仓库的 schedule 触发默认是禁用的，需要先在
-# Settings → Actions → General 里开启 Actions，然后手动跑一次
-# workflow_dispatch 激活（之后每天自动执行）。
+# Do not use GitHub's "Sync fork" button: it merges upstream history back in,
+# workflow commits included, which is exactly what this workflow avoids.
+#
+# Fork schedules are disabled by default. Enable Actions in Settings, then run
+# this workflow once via workflow_dispatch to activate the daily schedule.
 
 on:
   schedule:
-    - cron: "0 3 * * *" # 每天 UTC 03:00（北京 11:00）
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -24,37 +31,98 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Add upstream
+      - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/wuyoscar/GPT-Image2-Skill.git
+          git fetch upstream main
 
-      - name: Fetch upstream
-        run: git fetch upstream main
-
-      - name: Merge upstream/main into main
+      - name: Import upstream except fork-owned workflows
         id: merge
+        shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git merge upstream/main --no-edit; then
-            echo "conflict=1" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          latest=$(git rev-parse upstream/main)
+          if [[ -f .github/upstream-sync.sha ]]; then
+            base=$(cat .github/upstream-sync.sha)
+          else
+            # Migration from the previous history-preserving merge workflow.
+            base=$(git merge-base HEAD upstream/main)
           fi
+          if ! git merge-base --is-ancestor "$base" upstream/main; then
+            echo '::error::Upstream history diverged from the last imported commit.'
+            exit 1
+          fi
+          echo "base=$base latest=$latest"
+          if [[ "$base" == "$latest" ]]; then
+            echo 'Upstream already synchronized.'
+            exit 0
+          fi
+
+          # Do not merge upstream commits into our history: even a workflow
+          # removed from the final tree may be rejected if its adding commit
+          # is included in the GITHUB_TOKEN push.
+          patch="$RUNNER_TEMP/upstream.patch"
+          git diff --binary "$base" "$latest" -- . \
+            ':(exclude).github/workflows/**' > "$patch"
+
+          # An empty patch means upstream only touched fork-owned paths; there is
+          # nothing to import, but the checkpoint must still advance.
+          if [[ -s "$patch" ]] && ! git apply --3way --index "$patch"; then
+            {
+              echo 'conflict=1'
+              echo "base=$base"
+              echo "latest=$latest"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf '%s\n' "$latest" > .github/upstream-sync.sha
+          git add .github/upstream-sync.sha
+          git commit -m "chore(sync): import upstream ${latest:0:12}"
+
+      # Upload before the failing step, so a conflict leaves both the branch
+      # snapshot and the exact patch behind.
+      - name: Upload conflicting patch
+        if: steps.merge.outputs.conflict == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-sync-patch
+          path: ${{ runner.temp }}/upstream.patch
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Preserve conflict state and fail
         if: steps.merge.outputs.conflict == '1'
         run: |
           git checkout -b sync-conflict || true
           git add -A
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "sync: conflict with upstream/main (auto)" || true
-          # Replace only the bot-owned conflict snapshot we fetched at checkout.
-          # --force-with-lease keeps manual remote edits safe while allowing the
-          # daily run to refresh the branch instead of failing non-fast-forward.
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "sync: conflict ${{ steps.merge.outputs.base }}..${{ steps.merge.outputs.latest }} (auto)" || true
           git push --force-with-lease origin HEAD:sync-conflict
-          echo "::error::Merge conflict with upstream/main; conflict state pushed to sync-conflict"
+          echo '::error::Upstream patch conflict; snapshot pushed to sync-conflict.'
           exit 1
 
-      - name: Push merged main
+      # We do not inherit upstream ci.yml, and GITHUB_TOKEN pushes do not start
+      # workflows, so the imported CLI must be tested here before it lands.
+      - name: Set up uv
+        if: steps.merge.outputs.conflict != '1'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Verify imported CLI and personal adapter
+        if: steps.merge.outputs.conflict != '1'
+        run: |
+          set -euo pipefail
+          bash -n skills/ry-image/scripts/generate.sh
+          test -f skills/gpt-image/scripts/generate.py
+          test -L skills/ry-image/references
+          test -f skills/ry-image/prompt-from-image/SKILL.md
+          uv run python -m py_compile src/gpt_image_cli/*.py
+          uv run python -m unittest discover -s tests -v
+
+      - name: Push imported main
         if: steps.merge.outputs.conflict != '1'
         run: git push origin main
